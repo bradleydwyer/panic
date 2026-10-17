@@ -130,9 +130,10 @@ mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
     #[test]
-    #[ignore = "requires locally supplied PANIC_DATA and PANIC_FIXTURES; run with --ignored"]
+    #[ignore = "requires locally supplied PANIC_FIXTURES; run with --ignored"]
     fn every_original_retrace_state_and_inherited_latches() {
-        let data = crate::test_support::data();
+        let scratch = crate::test_support::Scratch::new();
+        let data = scratch.player_data();
         let fixture = crate::test_support::fixture("tests/fixtures/ending-states.sha256");
         for case in 0..2 {
             let mut vga = Vga::new();
@@ -164,6 +165,19 @@ mod tests {
                 assert_eq!(done, frame == 198);
             }
         }
+    }
+    #[test]
+    fn fresh_vga_runs_to_completion_in_bounded_steps() {
+        let scratch = crate::test_support::Scratch::new();
+        let mut vga = Vga::new();
+        let mut scene = Ending::new(&scratch.player_data(), &mut vga).unwrap();
+        assert!(!scene.step(&mut vga, 0));
+        let mut steps = 0;
+        while !scene.step(&mut vga, 0x3500) {
+            steps += 1;
+            assert!(steps < 198, "ending did not finish");
+        }
+        assert_eq!(steps + 1, 198);
     }
     #[test]
     #[ignore = "requires locally supplied PANIC_FIXTURES; run with --ignored"]

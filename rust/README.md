@@ -62,9 +62,16 @@ Escape quits, Space pauses and F toggles fullscreen. Useful options:
 - `--fullscreen` starts in fullscreen.
 
 Instead of `--data` you can set `PANIC_DATA`. With neither, the player looks
-for a `data/` directory in the current directory or next to the executable.
-The output of `panic_resources.py extract` isn't enough to run the player; use
-the full importer.
+for a `data/` directory in the current directory or next to the executable,
+then tries the current directory. The output of `panic_resources.py extract`
+isn't enough to run the player; use the full importer.
+
+At startup the player checks the size and SHA-256 of every file it uses and
+lists any that are missing or different, so a bad import fails straight away
+rather than partway through the demo.
+
+If a headless export with `--out` is interrupted or fails, the unfinished
+`panic.wav` and `timeline.csv` are left with a `.partial` suffix.
 
 ## Tests
 
@@ -95,6 +102,11 @@ The player runs on a fixed 70 Hz scene timer with 16 kHz stereo audio mixed in
 VGA and PIT timing isn't emulated, so frame timing won't match every DOS
 machine exactly. A full headless run takes 17,442 timer steps (249.171429
 seconds).
+
+The desktop player keeps about 100 ms of audio queued and shows each frame
+when its audio reaches the speakers rather than when SDL takes it from the
+queue. If no accelerated renderer is available it falls back to SDL's
+software renderer.
 
 It's been tested on Apple Silicon Macs. It should build elsewhere, but display
 and audio on other platforms haven't been checked yet.

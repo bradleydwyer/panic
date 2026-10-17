@@ -45,10 +45,7 @@ impl Intro {
         }
         let mut stars = [Star::default(); 256];
         let mut seed = u32::from_le_bytes(memory[0x67ec6..0x67eca].try_into().unwrap());
-        let mut rand = || {
-            seed = seed.wrapping_mul(0x015a4e35).wrapping_add(1);
-            ((seed >> 16) & 0x7fff) as i32
-        };
+        let mut rand = || seed_random(&mut seed);
         for star in &mut stars {
             star.x = ((rand() - 16384) * 2) as i16;
             star.y = ((rand() - 16384) * 2) as i16;
@@ -195,6 +192,13 @@ fn decode(memory: &[u8], mut cursor: usize, vga: &mut Vga) -> usize {
     }
 }
 
+/// The C runtime's linear congruential `rand`, used once to place the stars.
+fn seed_random(seed: &mut u32) -> i32 {
+    *seed = seed.wrapping_mul(0x015a4e35).wrapping_add(1);
+    ((*seed >> 16) & 0x7fff) as i32
+}
+
+/// The star routine's own rotate-and-add generator, used to reseed stars.
 fn random(state: &mut (u16, u16)) -> u16 {
     let mut value = state.0.wrapping_add(state.1);
     for (i, rotate) in [2, 1, 2, 3, 1].into_iter().enumerate() {
@@ -279,6 +283,90 @@ mod tests {
     use sha2::{Digest, Sha256};
     fn data() -> Data {
         crate::test_support::data()
+    }
+
+    #[test]
+    fn seed_random_known_answers() {
+        let mut seed = 1;
+        let values: Vec<_> = (0..4).map(|_| seed_random(&mut seed)).collect();
+        assert_eq!(values, [346, 130, 10982, 1090]);
+    }
+
+    #[test]
+    fn star_random_known_answers() {
+        let mut state = (0x98dc, 0x5a46);
+        let values: Vec<_> = (0..4).map(|_| random(&mut state)).collect();
+        assert_eq!(values, [0xc6d0, 0xb669, 0x88a6, 0xaa4e]);
+        assert_eq!(state, (0x88a6, 0xaa4e));
+    }
+
+    #[test]
+    fn decode_skips_runs_and_aligns_to_paragraphs() {
+        let mut memory = vec![0; 48];
+        // Frame at 1: skip 2, run 3 of colour 7, skip 127, run 2 of colour 9.
+        memory[1..8].copy_from_slice(&[0xfe, 3, 7, 0x81, 2, 9, 0]);
+        // Frame at 16: skip 128, run 1 of colour 5.
+        memory[16..20].copy_from_slice(&[0x80, 1, 5, 0]);
+        // Frame at 32 ends exactly on a paragraph boundary.
+        memory[32..45].fill(0xff);
+        memory[45..48].copy_from_slice(&[1, 0x2a, 0]);
+        let mut vga = Vga::new();
+        assert_eq!(decode(&memory, 1, &mut vga), 16);
+        assert_eq!(decode(&memory, 16, &mut vga), 32);
+        assert_eq!(decode(&memory, 32, &mut vga), 48);
+        let set = [
+            (2, 0, 7),
+            (3, 0, 7),
+            (0, 1, 7),
+            (0, 33, 9),
+            (1, 33, 9),
+            (0, 32, 5),
+            (1, 3, 0x2a),
+        ];
+        for (p, at, color) in set {
+            assert_eq!(vga.planes[p][at], color, "plane {p} at {at}");
+        }
+        let written: usize = vga
+            .planes
+            .iter()
+            .map(|plane| plane.iter().filter(|&&b| b != 0).count())
+            .sum();
+        assert_eq!(written, set.len());
+    }
+
+    #[test]
+    fn doors_fill_flat_edge_and_gradient() {
+        let mut palette = vec![99; 768];
+        doors(&mut palette, 14);
+        let entry = |i: usize| palette[(128 + i) * 3];
+        for i in 0..7 {
+            assert_eq!(entry(i), 99);
+        }
+        assert_eq!(entry(7), 26);
+        assert_eq!(entry(8), 40);
+        let gradient: Vec<_> = (9..=19).map(entry).collect();
+        assert_eq!(gradient, [45, 45, 45, 45, 45, 44, 45, 44, 45, 44, 44]);
+        assert_eq!(entry(100), 36);
+        assert!(palette[..128 * 3].iter().all(|&b| b == 99));
+        assert!(palette[229 * 3..].iter().all(|&b| b == 99));
+        for i in 7..=100 {
+            assert!(
+                palette[(128 + i) * 3..(129 + i) * 3]
+                    .iter()
+                    .all(|&b| b == entry(i))
+            );
+        }
+    }
+
+    #[test]
+    fn doors_with_wide_gap_write_only_flat_and_edge() {
+        let mut palette = vec![99; 768];
+        doors(&mut palette, 198);
+        let entry = |i: usize| palette[(128 + i) * 3];
+        assert_eq!(entry(98), 99);
+        assert!((99..113).all(|i| entry(i) == 26));
+        assert_eq!(entry(113), 40);
+        assert!(palette[242 * 3..].iter().all(|&b| b == 99));
     }
     #[test]
     #[ignore = "requires locally supplied PANIC_DATA and PANIC_FIXTURES; run with --ignored"]

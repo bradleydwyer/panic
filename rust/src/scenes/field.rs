@@ -1,5 +1,7 @@
-//! Part5 recursive field and adaptive integer terrain rays.
-//! See analysis/effects-567.md and its original-instruction differential oracles.
+//! Part 5: recursive zooming field and adaptive integer terrain rays.
+//! The field repeatedly zooms one 256-wide buffer while expanding the next
+//! from it at twice the resolution; the terrain casts one ray per column
+//! pair over a 200 by 200 height and colour map.
 use crate::{
     data::{Data, signed},
     vga::Vga,
@@ -249,11 +251,13 @@ impl Field {
         palette[384..].copy_from_slice(&window[384..]);
         vga.palette[3..].copy_from_slice(&palette[3..]);
         palette.copy_within(..384, 384);
-        let mut video = segment(if vga.indices.len() == 64000 {
-            vga.indices.clone()
-        } else {
-            data.file("PSTART.U")?
-        });
+        // Field always follows Rings, which ends by scanning out PSTART.U
+        // as a packed 320 by 200 image, so the field starts from whatever
+        // image is currently in vga.indices.
+        if vga.indices.len() != 64000 {
+            return Err("Field needs the 320 by 200 image left by Rings".into());
+        }
+        let mut video = segment(vga.indices.clone());
         video[..320].fill(255);
         for y in 0..200 {
             video[y * 320] = 255;
@@ -437,6 +441,73 @@ impl Field {
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
+
+    #[test]
+    fn random_is_the_15_bit_linear_congruential_sequence() {
+        let mut state = 1;
+        let values: Vec<u32> = (0..4).map(|_| random(&mut state)).collect();
+        assert_eq!(values, [41, 18467, 6334, 26500]);
+        assert_eq!((state >> 16) & 32767, 26500);
+        let mut state = u32::MAX;
+        assert!(random(&mut state) <= 32767);
+    }
+    #[test]
+    fn perturb_touches_only_the_clamped_centre_square() {
+        for (fill, inside) in [(0x80u8, Some(1u8)), (0, None), (127, None)] {
+            let mut source = vec![fill; 65536];
+            let mut state = 1;
+            perturb(&mut source, &mut state);
+            for (p, &value) in source.iter().enumerate() {
+                let (y, x) = ((p / 256) as i32 - 100, (p % 256) as i32 - 128);
+                if x.abs() <= 2 && y.abs() <= 2 {
+                    assert!((1..=127).contains(&value), "{p}: {value}");
+                    if let Some(expected) = inside {
+                        assert_eq!(value, expected, "{p}");
+                    }
+                } else {
+                    assert_eq!(value, fill, "{p}");
+                }
+            }
+            let mut replay = 1;
+            for _ in 0..25 {
+                random(&mut replay);
+            }
+            assert_eq!(state, replay);
+        }
+    }
+    #[test]
+    fn perturb_first_cell_uses_distance_weighted_noise() {
+        let mut source = vec![0; 65536];
+        source[98 * 256 + 126] = 100;
+        let mut state = 1;
+        perturb(&mut source, &mut state);
+        // Distance 4, noise 41: (100 * 4 + 41 - 63) / 4 = 94.
+        assert_eq!(source[98 * 256 + 126], 94);
+    }
+    #[test]
+    fn unit_zoom_copies_the_centre_window() {
+        let source: Vec<u8> = (0..65536u32).map(|i| (i ^ (i >> 8)) as u8).collect();
+        let mut output = vec![0xee; 65536];
+        zoom(&source, &mut output, 0, 1);
+        for (p, &value) in output.iter().enumerate() {
+            let (y, x) = (p.wrapping_sub(0x39e0) / 320, p.wrapping_sub(0x39e0) % 320);
+            if p >= 0x39e0 && y < 100 && x < 128 {
+                assert_eq!(value, source[(50 + y) * 256 + 64 + x], "{p}");
+            } else {
+                assert_eq!(value, 0xee, "{p}");
+            }
+        }
+    }
+    #[test]
+    fn expand_keeps_flat_input_flat_and_writes_two_rows() {
+        let source = vec![37; 65536];
+        let mut destination = vec![0; 65536];
+        expand(&source, &mut destination, 3);
+        for (p, &value) in destination.iter().enumerate() {
+            let written = (3 * 512..4 * 512).contains(&p);
+            assert_eq!(value, if written { 37 } else { 0 }, "{p}");
+        }
+    }
     #[test]
     #[ignore = "requires locally supplied PANIC_DATA; run with --ignored"]
     fn original_music_threshold_control_schedule() {

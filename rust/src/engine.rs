@@ -65,7 +65,7 @@ impl Engine {
     pub fn new(data: Data, fallback: bool) -> Result<Self, String> {
         let mut video = Vga::new();
         let music = Music::new(&data)?;
-        let scene = Scene::new(1, &data, &mut video)?;
+        let scene = Scene::new(SEQUENCE[0], &data, &mut video)?;
         Ok(Self {
             data,
             scene,
@@ -116,10 +116,11 @@ impl Engine {
                 self.scene = Scene::new(self.part(), &self.data, &mut self.video)?;
             }
         }
-        // A corrupt or incompatible data set must not make an unattended export hang.
+        // The demo lasts about four minutes. Stop rather than run forever if
+        // a scene never reaches its exit condition.
         if self.frames > FRAME_RATE * 600 {
             return Err(format!(
-                "Scene {} exceeded the ten-minute playback limit",
+                "Playback passed ten minutes without finishing (stuck in part {})",
                 self.part()
             ));
         }

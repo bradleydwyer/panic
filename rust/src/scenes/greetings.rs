@@ -1,5 +1,5 @@
-//! Part7: five descriptor queues copying pre-rendered font rows through VGA latches.
-//! Original main 0x12645; software and native FP yield the same601 variant bytes.
+//! Part 7: five descriptor queues copying pre-rendered font rows through VGA latches.
+//! Original main 0x12645; software and native FP yield the same 601 variant bytes.
 use crate::{
     data::{Data, word},
     vga::Vga,
@@ -37,13 +37,18 @@ impl Greetings {
     #[allow(clippy::approx_constant)]
     pub fn new(data: &Data, vga: &mut Vga) -> Result<Self, String> {
         let memory = data.memory(7)?;
-        let texts = std::array::from_fn(|i| {
+        let texts: [Result<Vec<u8>, String>; 5] = std::array::from_fn(|i| {
             let at = 0x16140 + 0x92 + i * 4;
             let pointer = word(&memory, at) as usize + word(&memory, at + 2) as usize * 16;
             // Original byte indices can read beyond a text's terminating NUL:
-            // retain256 bytes for the second-strip termination-check quirk.
-            memory[pointer..pointer + 256].to_vec()
+            // retain 256 bytes for the second-strip termination-check quirk.
+            memory
+                .get(pointer..pointer + 256)
+                .map(<[u8]>::to_vec)
+                .ok_or_else(|| format!("Greetings text {i} pointer {pointer:#x} is out of range"))
         });
+        let [t0, t1, t2, t3, t4] = texts;
+        let texts = [t0?, t1?, t2?, t3?, t4?];
         for p in 0..4 {
             let source = data.file(&format!("TRUG_{p}.MAP"))?;
             if source.len() != 64000 {
@@ -90,7 +95,7 @@ impl Greetings {
         }
         if self.stage == 1 {
             // Upload precedes computation: the final feedback result is never
-            // uploaded, matching the native60,56,...4 loop.
+            // uploaded, matching the native 60, 56, ..., 4 loop.
             vga.palette.copy_from_slice(&self.work);
             self.phase = (self.phase + 1) & 63;
             self.work[576..].copy_from_slice(&triangle(self.phase, 64));
@@ -195,6 +200,12 @@ impl Greetings {
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
+    #[test]
+    fn triangle_with_zero_intensity_is_black() {
+        for phase in [0, 1, 31, 63] {
+            assert!(triangle(phase, 0).iter().all(|&v| v == 0));
+        }
+    }
     #[test]
     #[ignore = "requires locally supplied PANIC_DATA; run with --ignored"]
     fn music_exit_uses_previous_position_then_completes_both_fades() {

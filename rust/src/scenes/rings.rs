@@ -1,9 +1,50 @@
-//! Part6: bitplane interference rings and the PSTART transition.
+//! Part 6: bitplane interference rings and the PSTART transition.
 //! Original 0x1161c control, 0x1130e mask decoder, 0x11372 window copier.
 use crate::{
     data::{Data, word},
     vga::Vga,
 };
+
+/// Decodes the M.SUM bitplane mask into planes 2 and 3. After a leading
+/// word the file holds 16 word offsets to streams: entries 2k and 2k + 1 fill
+/// 8 KiB page k of plane 2 and plane 3 respectively. Each stream is a list of
+/// (skip, count, count literal words) records ending with a zero skip; skipped
+/// words are cleared and writing starts two bytes into the page.
+fn decode_mask(mask: &[u8], planes: &mut [Vec<u8>; 4]) -> Result<(), String> {
+    if mask.len() < 34 {
+        return Err("Truncated M.SUM header".into());
+    }
+    for n in 0..16 {
+        let mut at = word(mask, 2 + n * 2) as usize;
+        let page = (n / 2) * 8192;
+        let plane = &mut planes[2 + n % 2];
+        let mut dest = page + 2;
+        loop {
+            if at + 2 > mask.len() {
+                return Err("Truncated M.SUM skip".into());
+            }
+            let skip = word(mask, at) as usize;
+            at += 2;
+            if skip == 0 {
+                break;
+            }
+            if at + 2 > mask.len() || dest + skip * 2 > page + 8192 {
+                return Err("Invalid M.SUM skip".into());
+            }
+            plane[dest..dest + skip * 2].fill(0);
+            dest += skip * 2;
+            let count = word(mask, at) as usize;
+            at += 2;
+            if at + count * 2 > mask.len() || dest + count * 2 > page + 8192 {
+                return Err("Invalid M.SUM literal".into());
+            }
+            plane[dest..dest + count * 2].copy_from_slice(&mask[at..at + count * 2]);
+            at += count * 2;
+            dest += count * 2;
+        }
+    }
+    Ok(())
+}
 
 pub struct Rings {
     source: Vec<u8>,
@@ -33,35 +74,7 @@ impl Rings {
             p.fill(0);
         }
         vga.palette.fill(0);
-        for n in 0..16 {
-            let mut at = word(&mask, 2 + n * 2) as usize;
-            let page = (n / 2) * 8192;
-            let plane = &mut vga.planes[2 + n % 2];
-            let mut dest = page + 2;
-            loop {
-                if at + 2 > mask.len() {
-                    return Err("Truncated M.SUM skip".into());
-                }
-                let skip = word(&mask, at) as usize;
-                at += 2;
-                if skip == 0 {
-                    break;
-                }
-                if at + 2 > mask.len() || dest + skip * 2 > page + 8192 {
-                    return Err("Invalid M.SUM skip".into());
-                }
-                plane[dest..dest + skip * 2].fill(0);
-                dest += skip * 2;
-                let count = word(&mask, at) as usize;
-                at += 2;
-                if at + count * 2 > mask.len() || dest + count * 2 > page + 8192 {
-                    return Err("Invalid M.SUM literal".into());
-                }
-                plane[dest..dest + count * 2].copy_from_slice(&mask[at..at + count * 2]);
-                at += count * 2;
-                dest += count * 2;
-            }
-        }
+        decode_mask(&mask, &mut vga.planes)?;
         vga.ega(0, 40, 320, 200);
         Ok(Self {
             source,
@@ -189,6 +202,92 @@ impl Rings {
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
+
+    /// Builds an invented mask whose entry 0 points at `stream` and whose
+    /// other 15 entries point at a shared zero terminator after it.
+    fn mask(stream: &[u8]) -> Vec<u8> {
+        let terminator = 34 + stream.len();
+        let mut bytes = vec![0; 34];
+        bytes[2..4].copy_from_slice(&34u16.to_le_bytes());
+        for n in 1..16 {
+            bytes[2 + n * 2..4 + n * 2].copy_from_slice(&(terminator as u16).to_le_bytes());
+        }
+        bytes.extend_from_slice(stream);
+        bytes.extend_from_slice(&[0, 0]);
+        bytes
+    }
+    fn planes() -> [Vec<u8>; 4] {
+        std::array::from_fn(|_| vec![0x11; 65536])
+    }
+    #[test]
+    fn mask_decoder_clears_skips_and_copies_literals() {
+        let mut out = planes();
+        decode_mask(&mask(&[1, 0, 2, 0, 0xaa, 0xbb, 0xcc, 0xdd]), &mut out).unwrap();
+        let mut expected = vec![0x11; 65536];
+        expected[2..8].copy_from_slice(&[0, 0, 0xaa, 0xbb, 0xcc, 0xdd]);
+        assert_eq!(out[2], expected);
+        for plane in [0, 1, 3] {
+            assert!(out[plane].iter().all(|&b| b == 0x11), "plane {plane}");
+        }
+    }
+    #[test]
+    fn mask_decoder_odd_entries_fill_plane_three_pages() {
+        let mut bytes = mask(&[]);
+        // Entry 3 is page 1 of plane 3; give it a one-word literal.
+        let offset = bytes.len() as u16;
+        bytes[8..10].copy_from_slice(&offset.to_le_bytes());
+        bytes.extend_from_slice(&[1, 0, 1, 0, 0x5a, 0xa5, 0, 0]);
+        let mut out = planes();
+        decode_mask(&bytes, &mut out).unwrap();
+        assert_eq!(out[3][8192 + 2..8192 + 6], [0, 0, 0x5a, 0xa5]);
+        assert_eq!(out[3].iter().filter(|&&b| b != 0x11).count(), 4);
+        assert!(out[2].iter().all(|&b| b == 0x11));
+    }
+    #[test]
+    fn mask_decoder_rejects_truncated_and_overflowing_streams() {
+        let cases: [(Vec<u8>, &str); 7] = [
+            (vec![0; 33], "Truncated M.SUM header"),
+            (
+                {
+                    let mut bytes = mask(&[]);
+                    bytes[2..4].copy_from_slice(&0xfff0u16.to_le_bytes());
+                    bytes
+                },
+                "Truncated M.SUM skip",
+            ),
+            (
+                {
+                    let mut bytes = mask(&[1, 0]);
+                    bytes.truncate(36);
+                    bytes[4..34].fill(0);
+                    bytes
+                },
+                "Invalid M.SUM skip",
+            ),
+            (mask(&[0, 16, 0, 0]), "Invalid M.SUM skip"),
+            (mask(&[1, 0, 4, 0, 1, 2, 3, 4]), "Invalid M.SUM literal"),
+            (
+                mask(&[0xfe, 0x0f, 2, 0, 1, 2, 3, 4]),
+                "Invalid M.SUM literal",
+            ),
+            (
+                {
+                    let mut bytes = mask(&[1, 0, 0, 0]);
+                    bytes.truncate(38);
+                    bytes[4..34].fill(0);
+                    bytes
+                },
+                "Truncated M.SUM skip",
+            ),
+        ];
+        for (n, (bytes, error)) in cases.iter().enumerate() {
+            assert_eq!(
+                decode_mask(bytes, &mut planes()),
+                Err(error.to_string()),
+                "case {n}"
+            );
+        }
+    }
     #[test]
     #[ignore = "requires locally supplied PANIC_DATA; run with --ignored"]
     fn music_wait_and_strict_exit_threshold() {

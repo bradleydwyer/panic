@@ -112,15 +112,7 @@ impl Scroller {
                 }
             }
             1 => {
-                for step in 0..10 {
-                    if self.tick >= step && self.tick - step < 160 {
-                        let (src, dst) = self.tiles[self.tick - step];
-                        tile(vga, step, src, dst);
-                    }
-                }
-                vga.mode_x(0x8000, 80, 320, 200);
-                self.tick += 1;
-                if self.tick == 169 {
+                if self.transition_tick(vga) {
                     self.phase = 2;
                     self.tick = 0;
                 }
@@ -165,6 +157,21 @@ impl Scroller {
             }
         }
         vga.mode_x(0x8000, 80, 320, 200);
+    }
+
+    /// One tick of the tile transition: tile `n` is drawn in ten successive
+    /// ticks, one border step per tick, so up to ten tiles are in flight.
+    /// Returns true after the last of the 169 ticks.
+    fn transition_tick(&mut self, vga: &mut Vga) -> bool {
+        for step in 0..10 {
+            if self.tick >= step && self.tick - step < 160 {
+                let (src, dst) = self.tiles[self.tick - step];
+                tile(vga, step, src, dst);
+            }
+        }
+        vga.mode_x(0x8000, 80, 320, 200);
+        self.tick += 1;
+        self.tick == 169
     }
 
     fn finish_transition(&mut self, vga: &mut Vga) {
@@ -356,6 +363,73 @@ fn glyph(code: u8, x: usize) -> bool {
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
+
+    #[test]
+    fn glyph_codes_select_fixed_twelve_pixel_masks() {
+        let mask = |code| (0..12).map(|x| glyph(code, x) as u8).collect::<Vec<_>>();
+        assert_eq!(mask(0), [0; 12]);
+        assert_eq!(mask(2), [1; 12]);
+        assert_eq!(mask(4), [1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1]);
+        assert_eq!(mask(6), [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]);
+        assert_eq!(mask(8), [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(mask(10), [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1]);
+        assert_eq!(mask(12), [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0]);
+        assert_eq!(mask(14), [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid original sine glyph 1")]
+    fn glyph_rejects_odd_codes() {
+        glyph(1, 0);
+    }
+
+    fn tile_source() -> Vga {
+        let mut vga = Vga::new();
+        for (p, plane) in vga.planes.iter_mut().enumerate() {
+            for (i, byte) in plane[..0x4000].iter_mut().enumerate() {
+                *byte = (i % 251 + 1 + p) as u8;
+            }
+        }
+        vga
+    }
+
+    fn copied(vga: &Vga, p: usize, row: usize, col: usize) -> bool {
+        let source = 3 * 160 + 2 + 160 * row + col;
+        vga.planes[p][0x8000 + 80 * row + col] == vga.planes[p][source]
+    }
+
+    #[test]
+    fn first_tile_step_copies_outer_border_and_edge_planes() {
+        let mut vga = tile_source();
+        tile(&mut vga, 0, 3 * 160 + 2, 0x8000);
+        for row in 0..20 {
+            for col in 0..5 {
+                for p in 0..4 {
+                    let border = row == 0 || row == 19;
+                    let edge = (col == 0 && p == 0) || (col == 4 && p == 3);
+                    assert_eq!(copied(&vga, p, row, col), border || edge, "{row} {col} {p}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ten_tile_steps_copy_whole_tile_and_nothing_else() {
+        let mut vga = tile_source();
+        for step in 0..10 {
+            tile(&mut vga, step, 3 * 160 + 2, 0x8000);
+        }
+        for p in 0..4 {
+            for row in 0..20 {
+                for col in 0..5 {
+                    assert!(copied(&vga, p, row, col), "{row} {col} {p}");
+                }
+            }
+            let written = vga.planes[p][0x8000..].iter().filter(|&&b| b != 0).count();
+            assert_eq!(written, 100);
+        }
+    }
+
     #[test]
     #[ignore = "requires locally supplied PANIC_DATA and PANIC_FIXTURES; run with --ignored"]
     fn every_plane_matches_original_transition_and_1520_frames() {
@@ -368,14 +442,12 @@ mod tests {
         }
         let mut scene = Scroller::new(&data, &mut vga).unwrap();
         scene.begin_transition(&mut vga);
-        for f in 0..169 {
-            for k in 0..10 {
-                if f >= k && f - k < 160 {
-                    let (s, d) = scene.tiles[f - k];
-                    tile(&mut vga, k, s, d);
-                }
-            }
+        scene.tick = 0;
+        let mut ticks = 1;
+        while !scene.transition_tick(&mut vga) {
+            ticks += 1;
         }
+        assert_eq!(ticks, 169);
         scene.finish_transition(&mut vga);
         let fixture = crate::test_support::fixture("tests/fixtures/scroller-planes.sha256");
         let palettes = crate::test_support::fixture("tests/fixtures/scroller-palettes.sha256");

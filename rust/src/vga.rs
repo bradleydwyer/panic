@@ -38,6 +38,12 @@ impl Vga {
         }
     }
     pub fn packed(&mut self, pixels: &[u8], width: usize, height: usize) {
+        assert!(
+            pixels.len() >= width * height,
+            "packed image has {} bytes, needs {}",
+            pixels.len(),
+            width * height
+        );
         self.size(width, height);
         self.indices.copy_from_slice(&pixels[..width * height]);
         for (i, &v) in pixels[..width * height].iter().enumerate() {
@@ -68,5 +74,52 @@ impl Vga {
                     })
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mode_x_scanout_interleaves_planes_across_address_wraparound() {
+        let mut video = Vga::new();
+        for (plane, values) in video.planes.iter_mut().enumerate() {
+            values[65535] = 10 + plane as u8;
+            values[0] = 20 + plane as u8;
+            values[1] = 30 + plane as u8;
+        }
+        video.mode_x(65535, 1, 8, 2);
+        assert_eq!(
+            video.indices,
+            [
+                10, 11, 12, 13, 20, 21, 22, 23, 20, 21, 22, 23, 30, 31, 32, 33
+            ]
+        );
+        assert_eq!((video.width, video.height), (8, 2));
+    }
+
+    #[test]
+    fn ega_scanout_combines_plane_bits_in_most_significant_bit_order() {
+        let mut video = Vga::new();
+        for (plane, byte) in [0x55, 0x33, 0x0f, 0].into_iter().enumerate() {
+            video.planes[plane][42] = byte;
+            video.planes[plane][43] = byte | if plane == 3 { 0xff } else { 0 };
+        }
+        video.ega(42, 1, 8, 2);
+        assert_eq!(video.indices, (0..16).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn packed_pixels_roundtrip_through_planes_and_six_bit_dac() {
+        let mut video = Vga::new();
+        let pixels = [2, 0, 1, 2, 1, 2, 0, 1];
+        video.palette[..9].copy_from_slice(&[0, 16, 63, 64, 95, 127, 1, 32, 62]);
+        video.packed(&pixels, 4, 2);
+        assert_eq!(video.indices, pixels);
+        video.indices.fill(255);
+        video.mode_x(0, 1, 4, 2);
+        assert_eq!(video.indices, pixels);
+        assert_eq!(&video.rgb()[..9], &[4, 130, 251, 0, 65, 255, 0, 125, 255]);
     }
 }

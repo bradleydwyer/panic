@@ -1,12 +1,14 @@
 //! Independent reconstruction of Panic's resident STMIK PCM engine.
 //!
-//! The equations and integer rules come from analysis/music-engine.md, not
-//! a contemporary tracker library. No original instructions are executed.
+//! The equations and integer rules were recovered from the original resident
+//! player, not taken from a contemporary tracker library. No original
+//! instructions are executed.
 //! Output is 16,000 stereo frames/s. A deterministic 512-byte refill budget
 //! retains the original +0x41 chunk rounding and signed tick residue. Hardware
 //! IRQ/DMA jitter is deliberately an input contract, not emulated here.
 //! This is Panic's P.P playback profile, not a general S3M compatibility layer.
-//! See analysis/rust-music.md for the canonical sample-allocation contract.
+//! Samples are laid out in one deterministic arena (see `from_bytes`) so the
+//! original kernel's small reads past a sample's guard bytes are reproducible.
 use std::collections::VecDeque;
 
 const RATE: u32 = 16_000;
@@ -96,9 +98,6 @@ pub struct Music {
     loop_count: u8,
     loop_row: u16,
     jump: Option<(usize, u16)>,
-    gliss: bool,
-    filter: u8,
-    sync: u8,
     tick_remaining: i32,
     pending: VecDeque<i16>,
     ended: bool,
@@ -278,9 +277,6 @@ impl Music {
             loop_count: 0,
             loop_row: 0,
             jump: None,
-            gliss: false,
-            filter: 0,
-            sync: 0,
             tick_remaining: 0,
             pending: VecDeque::new(),
             ended: false,
@@ -799,14 +795,10 @@ impl Music {
             19 => {
                 let x = p & 15;
                 match (p >> 4, first) {
-                    (0, true) => {
-                        self.filter = if x == 15 || (x != 0 && self.flags & 16 != 0) {
-                            4
-                        } else {
-                            0
-                        }
-                    }
-                    (1, true) => self.gliss = x != 0,
+                    // S0x (filter) and S1x (glissando) are consumed like any
+                    // other effect, but the original player never reads the
+                    // state they set, so nothing is stored here.
+                    (0, true) | (1, true) => {}
                     (3, true) => {
                         let c = &mut self.channels[ch];
                         c.r[0x3d] = (c.r[0x3d] & 240) | ((x << 1) & 15)
@@ -847,7 +839,9 @@ impl Music {
             }
             20 if first && p > 32 => self.tempo = p as u16,
             22 if !first && p <= 64 => self.global_volume = p as u16,
-            26 if first => self.sync = p,
+            // Zxx stores a sync byte for the host program in the original;
+            // the player itself never reads it, so it has no effect here.
+            26 => {}
             _ => {}
         }
     }
@@ -945,7 +939,8 @@ impl Music {
             a[i] = 0;
             b[i] = 0;
         }
-        // P.P's S0A disables the optional filter; no active song uses it.
+        // The original's optional output filter (S0x) is never applied by the
+        // player; P.P only disables it.
         out
     }
 }
@@ -954,6 +949,193 @@ impl Music {
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
+    // A small invented S3M: one looping 8-bit unsigned sample and one packed
+    // pattern whose first row holds `row0` (channel 0 maps to mixer channel 0).
+    fn module(orders: &[u8], row0: &[u8]) -> Vec<u8> {
+        fn align(s: &mut Vec<u8>) -> u16 {
+            s.resize((s.len() + 15) & !15, 0);
+            (s.len() / 16) as u16
+        }
+        let mut s = vec![0; 96];
+        s[..4].copy_from_slice(b"test");
+        s[28] = 0x1a;
+        s[29] = 16;
+        s[32..34].copy_from_slice(&(orders.len() as u16).to_le_bytes());
+        s[34..36].copy_from_slice(&1u16.to_le_bytes());
+        s[36..38].copy_from_slice(&1u16.to_le_bytes());
+        s[44..48].copy_from_slice(b"SCRM");
+        s[48] = 64;
+        s[49] = 1;
+        s[50] = 125;
+        s[51] = 0xb0;
+        s[64..96].fill(255);
+        s[64] = 0;
+        s[65] = 8;
+        s.extend_from_slice(orders);
+        let pointers = s.len();
+        s.extend_from_slice(&[0; 4]);
+        let header = align(&mut s);
+        s[pointers..pointers + 2].copy_from_slice(&header.to_le_bytes());
+        let h = s.len();
+        s.resize(h + 80, 0);
+        s[h] = 1;
+        s[h + 16..h + 20].copy_from_slice(&32u32.to_le_bytes());
+        s[h + 20..h + 24].copy_from_slice(&8u32.to_le_bytes());
+        s[h + 24..h + 28].copy_from_slice(&32u32.to_le_bytes());
+        s[h + 28] = 64;
+        s[h + 31] = 1;
+        s[h + 32..h + 36].copy_from_slice(&8363u32.to_le_bytes());
+        s[h + 76..h + 80].copy_from_slice(b"SCRS");
+        let data = align(&mut s);
+        s[h + 14..h + 16].copy_from_slice(&data.to_le_bytes());
+        s.extend((0..32u8).map(|i| 64 + i.min(32 - i) * 8));
+        let pattern = align(&mut s);
+        s[pointers + 2..pointers + 4].copy_from_slice(&pattern.to_le_bytes());
+        let mut packed = row0.to_vec();
+        packed.push(0);
+        packed.extend_from_slice(&[0; 63]);
+        s.extend_from_slice(&((packed.len() + 2) as u16).to_le_bytes());
+        s.extend_from_slice(&packed);
+        s
+    }
+    // Invented lookup tables: periods, octave shifts, gains and waveforms.
+    fn tables() -> Vec<u8> {
+        let mut m = vec![0; BASE + 0x5bb4];
+        for i in 0..16 {
+            let period = 7000 - i as u16 * 350;
+            m[BASE + 0x5a08 + i * 2..][..2].copy_from_slice(&period.to_le_bytes());
+            m[BASE + 0x5960 + i] = i as u8;
+        }
+        for i in 0..64 {
+            m[BASE + 0x59a8 + i] = (i * 4) as u8;
+        }
+        for off in [0x5a34, 0x5b34, 0x5ab4] {
+            for i in 0..64 {
+                let v = (i as i16 - 32) * 8;
+                m[BASE + off + i * 2..][..2].copy_from_slice(&v.to_le_bytes());
+            }
+        }
+        m
+    }
+    // Note C-4 with instrument 1 and an effect on channel 0.
+    fn row(effect: u8, parameter: u8) -> [u8; 5] {
+        [32 | 128, 0x40, 1, effect, parameter]
+    }
+    fn synthetic(effect: u8, parameter: u8) -> Music {
+        Music::from_bytes(&module(&[0, 255], &row(effect, parameter)), &tables()).unwrap()
+    }
+    fn error(song: &[u8]) -> String {
+        match Music::from_bytes(song, &tables()) {
+            Ok(_) => panic!("module was accepted"),
+            Err(e) => e,
+        }
+    }
+    #[test]
+    fn synthetic_module_loads_and_plays_sound() {
+        let mut m = synthetic(0, 0);
+        assert!(!m.ended());
+        let pcm = m.render(4000);
+        assert_eq!(pcm.len(), 8000);
+        assert!(pcm.iter().any(|&v| v != 0));
+    }
+    #[test]
+    fn rejects_malformed_headers_and_directories() {
+        let good = module(&[0, 255], &row(0, 0));
+        let mut s = good.clone();
+        s[44] = b'X';
+        assert_eq!(error(&s), "P.P is not an S3M module");
+        assert!(Music::from_bytes(&good, &tables()[..BASE + 0x5bb3]).is_err());
+        let mut s = good.clone();
+        s[32..34].copy_from_slice(&0xffffu16.to_le_bytes());
+        assert_eq!(error(&s), "Truncated S3M directory");
+        let mut s = good.clone();
+        s[64 + 2] = 16;
+        assert!(error(&s).contains("OPL"));
+        let mut s = good.clone();
+        s[38] = 0x10;
+        assert!(error(&s).contains("Amiga"));
+        let mut s = good.clone();
+        s[38] = 8;
+        assert!(Music::from_bytes(&s, &tables()).is_ok());
+    }
+    #[test]
+    fn rejects_truncated_or_unsupported_samples_and_patterns() {
+        let good = module(&[0, 255], &row(0, 0));
+        let pointers = 96 + 2;
+        let h = word(&good, pointers) as usize * 16;
+        let mut s = good.clone();
+        s[pointers..pointers + 2].copy_from_slice(&((good.len() / 16) as u16).to_le_bytes());
+        assert_eq!(error(&s), "Truncated sample header 0");
+        let mut s = good.clone();
+        s[h + 16..h + 20].copy_from_slice(&60000u32.to_le_bytes());
+        assert_eq!(error(&s), "Truncated sample data 0");
+        for (offset, value) in [(30, 1), (31, 2), (31, 4)] {
+            let mut s = good.clone();
+            s[h + offset] = value;
+            assert!(error(&s).contains("unsupported"), "byte {offset} = {value}");
+        }
+        let mut s = good.clone();
+        s[h] = 2;
+        assert!(Music::from_bytes(&s, &tables()).is_ok());
+        let mut s = good.clone();
+        s[pointers + 2..pointers + 4]
+            .copy_from_slice(&((good.len() / 16 + 1) as u16).to_le_bytes());
+        assert_eq!(error(&s), "Truncated pattern");
+    }
+    #[test]
+    fn every_truncation_of_a_valid_module_is_an_error() {
+        let good = module(&[0, 255], &row(20, 200));
+        assert!(Music::from_bytes(&good, &tables()).is_ok());
+        for n in 0..good.len() {
+            assert!(
+                Music::from_bytes(&good[..n], &tables()).is_err(),
+                "prefix {n}"
+            );
+        }
+    }
+    #[test]
+    fn empty_or_terminated_order_list_is_silent() {
+        for orders in [&[][..], &[255, 0]] {
+            let mut m = Music::from_bytes(&module(orders, &row(0, 0)), &tables()).unwrap();
+            assert!(m.ended());
+            assert_eq!(m.render(1000), vec![0; 2000]);
+            assert_eq!(m.position(), 0);
+        }
+    }
+    #[test]
+    fn render_returns_two_samples_per_frame() {
+        let mut m = synthetic(0, 0);
+        for n in [0, 1, 2, 31, 32, 33, 255, 256, 257, 5000] {
+            assert_eq!(m.render(n).len(), 2 * n);
+        }
+    }
+    #[test]
+    fn chunk_sizes_do_not_change_output() {
+        let a = synthetic(0, 0).render(20000);
+        let mut m = synthetic(0, 0);
+        let mut b = Vec::new();
+        for n in [1, 7, 333, 64, 0, 2000, 4095, 13500] {
+            b.extend(m.render(n));
+        }
+        assert_eq!(a, b);
+    }
+    #[test]
+    fn playback_ends_at_tempo_extremes() {
+        // Txx below 33 is ignored; the header tempo of 125 stays in force.
+        for (parameter, tempo) in [(33, 33), (255, 255), (32, 125)] {
+            let mut m = synthetic(20, parameter);
+            let mut frames = 0;
+            while !m.ended() {
+                m.render(1000);
+                frames += 1000;
+                assert!(frames < 200_000, "T{parameter} did not finish");
+            }
+            assert_eq!(m.tempo, tempo);
+            // Drain the PCM of the final refill, after which only silence remains.
+            m.render(2000);
+            assert_eq!(m.render(1000), vec![0; 2000]);
+        }
+    }
     fn player() -> Music {
         let data = crate::test_support::data();
         Music::new(&data).unwrap()

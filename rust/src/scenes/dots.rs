@@ -1,5 +1,5 @@
 //! Part 3: inherited-image zoom, overlap-count circles, then 512 morphing dots.
-//! Arithmetic mirrors src/semantic_34.py and its original-instruction probes.
+//! Arithmetic follows the original 16-bit instructions, including wraparound.
 use crate::{
     data::{Data, word, words},
     vga::Vga,
@@ -516,5 +516,27 @@ mod tests {
         }
         assert!(d.shade.iter().all(|&v| v == 0));
         assert_eq!(s[0], d.sine[0]);
+    }
+    #[test]
+    fn zoom_at_scale_zero_fills_with_the_centre_pixel() {
+        let source = (0..65536)
+            .map(|i| (i * 7 + (i >> 8)) as u8)
+            .collect::<Vec<_>>();
+        let out = zoom(&source, 0);
+        assert_eq!(out.len(), 64000);
+        assert!(out.iter().all(|&v| v == source[100 * 320 + 160]));
+    }
+    #[test]
+    fn circle_erase_restores_buffer_including_wraparound() {
+        let original = (0..65536).map(|i| (i * 13 + 5) as u8).collect::<Vec<_>>();
+        let mut buffer = original.clone();
+        for (x, y) in [(10, 20), (310, 190), (-5, -3), (0, 0)] {
+            circle(&mut buffer, x, y, 1);
+        }
+        assert_ne!(buffer, original);
+        for (x, y) in [(0, 0), (-5, -3), (310, 190), (10, 20)] {
+            circle(&mut buffer, x, y, -1);
+        }
+        assert_eq!(buffer, original);
     }
 }

@@ -12,6 +12,4 @@ desktop = ["dep:sdl2"]
 
 [dependencies]
 sdl2 = { version = "=0.38.0", optional = true, features = ["bundled", "static-link"] }
-
-[dev-dependencies]
 sha2 = "0.10"

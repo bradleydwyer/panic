@@ -4,3 +4,7 @@ resolver = "2"
 
 [profile.release]
 debug = 1
+
+# Data verification hashes a few megabytes at startup; keep it quick in debug builds.
+[profile.dev.package.sha2]
+opt-level = 3
