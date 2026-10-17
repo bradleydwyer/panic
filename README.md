@@ -11,6 +11,11 @@ Apart from the screenshot above, the repository contains nothing from the
 original demo. You generate the player's data from your own copy of
 `PANIC.EXE`.
 
+For a modern take on the intro and the first scroller, see
+[panic-playground](https://github.com/bradleydwyer/panic-playground), which
+builds on this port. It keeps the original sequence and music; its 3D models,
+materials and effects are new work, not recovered from the demo.
+
 ## Quick start
 
 You need Rust 1.88 or newer. Desktop builds also need CMake and a C/C++
