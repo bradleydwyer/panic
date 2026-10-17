@@ -28,7 +28,9 @@ Usage: panic-demo [options]
 Without --data, PANIC_DATA is used, then data/ in the current directory or
 next to the executable, then the current directory.
 
-Desktop controls: Escape quits, Space pauses, F toggles fullscreen.
+Desktop controls: Escape quits, Space pauses, F toggles fullscreen,
+Right/Left seek 10 seconds, Up/Down seek 60 seconds, Shift+Right/Left
+jump to the next scene or back to the start of this or the previous one.
 Use --release for smooth playback.";
 
 /// Longest accepted --seek or --seconds value. The demo runs about 250 seconds.
@@ -302,8 +304,14 @@ fn headless_run(mut engine: Engine, o: &Options) -> Result<(), String> {
 #[cfg(feature = "desktop")]
 fn desktop(mut engine: Engine, o: &Options) -> Result<(), String> {
     use sdl2::{
-        audio::AudioSpecDesired, event::Event, keyboard::Keycode, pixels::PixelFormatEnum,
-        rect::Rect, render::Canvas, video::FullscreenType, video::Window,
+        audio::AudioSpecDesired,
+        event::Event,
+        keyboard::{Keycode, Mod},
+        pixels::PixelFormatEnum,
+        rect::Rect,
+        render::Canvas,
+        video::FullscreenType,
+        video::Window,
     };
     use std::{
         collections::VecDeque,
@@ -365,7 +373,7 @@ fn desktop(mut engine: Engine, o: &Options) -> Result<(), String> {
     let latency = u64::from(device.spec().samples);
     let lead = (latency * 3).max(SAMPLE_RATE / 10);
     let mut events = sdl.event_pump()?;
-    let origin = engine.audio_frames();
+    let mut origin = engine.audio_frames();
     let end = o
         .seconds
         .map(|s| origin.saturating_add((s * SAMPLE_RATE as f64).ceil() as u64));
@@ -380,6 +388,7 @@ fn desktop(mut engine: Engine, o: &Options) -> Result<(), String> {
         engine.video.height,
         engine.part(),
     );
+    let mut shown_frame = engine.frames;
     let mut previous_part = 0;
     let wall_start = Instant::now();
     let mut presentations = 0u64;
@@ -408,6 +417,61 @@ fn desktop(mut engine: Engine, o: &Options) -> Result<(), String> {
                     }
                 }
                 Event::KeyDown {
+                    keycode:
+                        Some(key @ (Keycode::Right | Keycode::Left | Keycode::Up | Keycode::Down)),
+                    keymod,
+                    ..
+                } => {
+                    let shift = keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD);
+                    let forward = matches!(key, Keycode::Right | Keycode::Up);
+                    if shift && matches!(key, Keycode::Right | Keycode::Left) {
+                        // Next scene, or back to the start of this one; if
+                        // this one started under 2 seconds ago, the one before.
+                        let scene = engine.scene_at(shown_frame);
+                        let index = if forward {
+                            scene + 1
+                        } else if shown_frame - engine.scene_start(scene).unwrap_or(0)
+                            < 2 * FRAME_RATE
+                        {
+                            scene.saturating_sub(1)
+                        } else {
+                            scene
+                        };
+                        engine.seek_scene(index)?;
+                    } else {
+                        let step = FRAME_RATE
+                            * if matches!(key, Keycode::Up | Keycode::Down) {
+                                60
+                            } else {
+                                10
+                            };
+                        engine.seek(if forward {
+                            shown_frame.saturating_add(step)
+                        } else {
+                            shown_frame.saturating_sub(step)
+                        })?;
+                    }
+                    // Drop audio and frames rendered for the old position.
+                    device.clear();
+                    queue.clear();
+                    origin = engine.audio_frames();
+                    submitted = 0;
+                    shown_frame = engine.frames;
+                    shown = (
+                        engine.video.rgb(),
+                        engine.video.width,
+                        engine.video.height,
+                        engine.part(),
+                    );
+                    let seconds = engine.seconds();
+                    println!(
+                        "seek {}:{:06.3}  part {}",
+                        (seconds / 60.0) as u64,
+                        seconds % 60.0,
+                        engine.part()
+                    );
+                }
+                Event::KeyDown {
                     keycode: Some(Keycode::F),
                     repeat: false,
                     ..
@@ -433,6 +497,7 @@ fn desktop(mut engine: Engine, o: &Options) -> Result<(), String> {
                 let count = pcm.len() as u64 / 2;
                 queue.push_back((
                     start,
+                    engine.frames,
                     engine.video.rgb(),
                     engine.video.width,
                     engine.video.height,
@@ -450,8 +515,9 @@ fn desktop(mut engine: Engine, o: &Options) -> Result<(), String> {
             }
             let audible = played.saturating_sub(latency);
             while queue.front().is_some_and(|f| f.0 <= audible) {
-                if let Some((_, rgb, w, h, p)) = queue.pop_front() {
+                if let Some((_, frame, rgb, w, h, p)) = queue.pop_front() {
                     shown = (rgb, w, h, p);
+                    shown_frame = frame;
                 }
             }
             if (engine.finished || end.is_some_and(|e| engine.audio_frames() >= e))
@@ -542,10 +608,7 @@ fn run() -> Result<(), String> {
         );
     }
     let mut engine = Engine::new(Data::new(data_root(&o)?)?, o.fallback)?;
-    let seek = (o.seek * FRAME_RATE as f64).floor() as u64;
-    while engine.frames < seek && !engine.finished {
-        engine.step()?;
-    }
+    engine.seek((o.seek * FRAME_RATE as f64).floor() as u64)?;
     if o.headless {
         return headless(engine, &o);
     }

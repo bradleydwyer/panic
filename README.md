@@ -41,7 +41,8 @@ cargo run --release --locked --no-default-features -- \
   --headless --data artifacts/local-data
 ```
 
-Controls: Escape quits, Space pauses, F toggles fullscreen. `--seek 180` skips
+Controls: Escape quits, Space pauses, F toggles fullscreen, and the arrow keys
+seek (Right/Left 10 seconds, Up/Down 60 seconds, Shift+Right/Left by scene). `--seek 180` skips
 to the three-minute mark and `--mute` turns the sound off. Run with `--help`
 for the other options.
 

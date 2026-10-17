@@ -50,7 +50,12 @@ cargo run --release --locked --no-default-features -- \
   --headless --data artifacts/local-data
 ```
 
-Escape quits, Space pauses and F toggles fullscreen. Useful options:
+Escape quits, Space pauses and F toggles fullscreen. Right and Left seek
+forward and back 10 seconds; Up and Down seek 60 seconds. Shift+Right jumps
+to the next scene. Shift+Left goes back to the start of the current scene, or
+to the previous scene if the current one started less than 2 seconds ago.
+Seeking back replays from the start, which takes up to about a second. Useful
+options:
 
 - `--seek 180` fast-forwards to the three-minute mark before playing.
 - `--mute` silences the audio but keeps the music driving scene timing.
