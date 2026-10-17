@@ -16,6 +16,8 @@ For a modern take on the intro and the first scroller, see
 builds on this port. It keeps the original sequence and music; its 3D models,
 materials and effects are new work, not recovered from the demo.
 
+[![Watch the modern Panic intro and scroller on YouTube](https://img.youtube.com/vi/Tiw6-bga6Qk/maxresdefault.jpg)](https://youtu.be/Tiw6-bga6Qk)
+
 ## Quick start
 
 You need Rust 1.88 or newer. Desktop builds also need CMake and a C/C++
