@@ -1,9 +1,12 @@
 Panic is a demonstration by Future Crew. This repository is an unaffiliated
-resource-inspection project.
+research port and resource-inspection project, currently held privately.
 
-The included MIT license applies to the authored tooling, tests and prose in
-this repository. It does not license Future Crew's executable, artwork, music,
-text, fonts or other material supplied by a user or produced by extraction.
+The included MIT license applies to the original standalone resource tools,
+synthetic tests and their accompanying prose. It does not cover rust/,
+tools/import_panic.py, tools/unpack_panic.py, or the reconstructed implementation
+they support; those additions remain under rights review. See rust/NOTICE.
+It does not license Future Crew's executable, artwork, music, text, fonts or
+other material supplied by a user or produced by extraction.
 
 The original release credits Wildfire, Psi and Trug for code, Purple Motion
 for music, Pixel for bitmap graphics and Abyss for object design. These credits

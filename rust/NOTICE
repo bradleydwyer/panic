@@ -1,0 +1,13 @@
+This directory contains a research reconstruction of Future Crew's Panic,
+based on reverse engineering and comparisons with original machine code.
+It is not represented as a clean-room implementation or cleared public release.
+
+The repository's MIT license does not apply to this directory or to the full
+import/recovery helpers tools/import_panic.py and tools/unpack_panic.py.
+No additional license over Future Crew material is asserted. Public
+redistribution of the reconstructed implementation remains under review.
+
+Original assets, unpacked executables and binary test fixtures are not included.
+They must be supplied or derived locally under the applicable original terms.
+Dependency licenses remain with their respective authors; dependencies are
+referenced through Cargo rather than vendored into this source tree.

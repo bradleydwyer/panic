@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Check the staged snapshot and reachable history against the public scope.
+"""Check the staged snapshot and reachable history against the selected scope.
 
 This checks file boundaries and text constraints, not copyright ownership.
 Review additions to APPROVED_FILES and the contents themselves before release.
 """
 from pathlib import Path
+import argparse
 import subprocess
 import sys
 
@@ -15,13 +16,26 @@ APPROVED_FILES = {
     'tests/test_resources.py', 'tests/test_local_release.py',
     'tools/panic_resources.py', 'tools/check_publication.py',
 }
+PRIVATE_FILES = {
+    '.cargo/config.toml', 'Cargo.toml', 'Cargo.lock', 'requirements-import.txt',
+    'rust/Cargo.toml', 'rust/README.md', 'rust/NOTICE',
+    'rust/src/data.rs', 'rust/src/engine.rs', 'rust/src/lib.rs',
+    'rust/src/main.rs', 'rust/src/music.rs', 'rust/src/vga.rs',
+    'rust/src/test_support.rs',
+    'rust/src/scenes/mod.rs', 'rust/src/scenes/intro.rs',
+    'rust/src/scenes/scroller.rs', 'rust/src/scenes/field.rs',
+    'rust/src/scenes/rings.rs', 'rust/src/scenes/dots.rs',
+    'rust/src/scenes/plasma.rs', 'rust/src/scenes/greetings.rs',
+    'rust/src/scenes/ending.rs',
+    'tools/import_panic.py', 'tools/unpack_panic.py', 'tests/test_import_panic.py',
+}
 
 
 def git(*args):
     return subprocess.check_output(['git', *args], cwd=ROOT)
 
 
-def check_rows(records, label, *, staged=False):
+def check_rows(records, label, allowed, *, staged=False):
     names = set()
     blobs = []
     for record in records.split(b'\0'):
@@ -40,21 +54,29 @@ def check_rows(records, label, *, staged=False):
             if second != 'blob':
                 raise ValueError(f'{label}: unexpected object type: {name}')
             oid = third
-        if name not in APPROVED_FILES:
+        if name not in allowed:
+            if name in PRIVATE_FILES:
+                raise ValueError(f'{label}: private research file blocks public release: {name}. '
+                                 'Use --private only for a private repository.')
             raise ValueError(f'{label}: file outside reviewed scope: {name}')
         names.add(name)
         blobs.append((name, oid))
-    if staged and names != APPROVED_FILES:
-        raise ValueError(f'Missing staged files: {sorted(APPROVED_FILES - names)}')
+    if staged and names != allowed:
+        raise ValueError(f'Missing staged files: {sorted(allowed - names)}')
     return blobs
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--private', action='store_true',
+                        help='Allow the explicit private research source list; not publication clearance')
+    args = parser.parse_args()
+    allowed = APPROVED_FILES | PRIVATE_FILES if args.private else APPROVED_FILES
     try:
-        blobs = check_rows(git('ls-files', '--stage', '-z'), 'index', staged=True)
+        blobs = check_rows(git('ls-files', '--stage', '-z'), 'index', allowed, staged=True)
         commits = git('rev-list', '--all').decode('ascii').splitlines()
         for commit in commits:
-            blobs.extend(check_rows(git('ls-tree', '-rz', '--full-tree', commit), commit))
+            blobs.extend(check_rows(git('ls-tree', '-rz', '--full-tree', commit), commit, allowed))
         seen = set()
         for name, oid in blobs:
             if oid in seen:
@@ -70,8 +92,10 @@ def main():
                          'divoom-minitoo' + '-research', 'gh' + 'p_']
             if any(marker in content for marker in forbidden):
                 raise ValueError(f'Local/private-path or token marker: {name}')
-        print(f'Checked {len(APPROVED_FILES)} staged files, {len(commits)} commits, '
-              f'{len(seen)} distinct text blobs. No files outside the reviewed scope.')
+        scope = 'private research' if args.private else 'public tooling'
+        print(f'Checked {len(allowed)} staged files, {len(commits)} commits, '
+              f'{len(seen)} distinct text blobs against {scope} scope. '
+              'This is not legal clearance.')
     except (OSError, ValueError, UnicodeError, subprocess.CalledProcessError) as error:
         print(f'Publication check failed: {error}', file=sys.stderr)
         return 1

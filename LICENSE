@@ -1,3 +1,8 @@
+License scope: this license applies to the standalone resource-inspection
+tools, synthetic tests and accompanying prose. It does not cover rust/,
+tools/import_panic.py or tools/unpack_panic.py, nor any original or extracted
+Future Crew material. See NOTICE and rust/NOTICE for the research additions.
+
 MIT License
 
 Copyright (c) 2026 Brad Dwyer
