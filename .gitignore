@@ -19,6 +19,7 @@ __pycache__/
 *.wav
 *.s3m
 *.png
+!/docs/panic-logo.png
 *.gif
 *.mp4
 *.zip

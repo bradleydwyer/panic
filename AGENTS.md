@@ -7,7 +7,9 @@ separate from the private research project; don't merge that history in.
 Being public doesn't mean the port is cleared for copyright. Keep all of the
 following out of Git: original or extracted demo files, disassembly,
 decompiler output, binary fixtures, screenshots, recordings, fonts, samples and
-the locations of private archives. Player data is generated locally from a
+the locations of private archives. The single exception is the README
+screenshot `docs/panic-logo.png`, pinned by hash in `tools/check_publication.py`;
+don't add more. Player data is generated locally from a
 `PANIC.EXE` the user supplies.
 
 Default tests must use synthetic data. Python tests that need the original

@@ -6,6 +6,7 @@ Review additions to APPROVED_FILES and the contents themselves before release.
 """
 from pathlib import Path
 import argparse
+import hashlib
 import subprocess
 import sys
 
@@ -15,6 +16,12 @@ APPROVED_FILES = {
     'docs/container-format.md', 'docs/publication.md', 'metadata/panic-release.json',
     'tests/test_resources.py', 'tests/test_local_release.py',
     'tools/panic_resources.py', 'tools/check_publication.py',
+    'docs/panic-logo.png',
+}
+# The only binary files allowed, pinned by SHA-256 so they can't be swapped.
+# docs/panic-logo.png is a screenshot of the Rust port showing Future Crew's logo.
+BINARY_FILES = {
+    'docs/panic-logo.png': '3f0824023f9fc2fe689ec28cd2b3e6bc7dcc197b1567c22291ae84939ba66a2b',
 }
 RESEARCH_FILES = {
     '.cargo/config.toml', 'Cargo.toml', 'Cargo.lock', 'requirements-import.txt',
@@ -82,6 +89,11 @@ def main():
             if oid in seen:
                 continue
             seen.add(oid)
+            if name in BINARY_FILES:
+                data = git('cat-file', 'blob', oid)
+                if hashlib.sha256(data).hexdigest() != BINARY_FILES[name]:
+                    raise ValueError(f'Binary file does not match its pinned hash: {name}')
+                continue
             if int(git('cat-file', '-s', oid)) > 128 * 1024:
                 raise ValueError(f'Unexpectedly large text file: {name}')
             content = git('cat-file', 'blob', oid).decode('utf-8')

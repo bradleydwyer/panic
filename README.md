@@ -1,12 +1,15 @@
 # Panic in Rust
 
+![The PANIC logo, rendered by the Rust port](docs/panic-logo.png)
+
 A Rust port of Future Crew's 1992 demo **Panic**. All eight scenes are
 implemented, along with the STMIK music player (sequencer and sample mixer).
 It's native code, not a DOS emulator or a video capture. Desktop playback uses
 SDL2; the headless player needs only Rust.
 
-The repository contains no original demo files. You generate the player's
-data from your own copy of `PANIC.EXE`.
+Apart from the screenshot above, the repository contains nothing from the
+original demo. You generate the player's data from your own copy of
+`PANIC.EXE`.
 
 ## Quick start
 
@@ -84,10 +87,11 @@ or local paths. Without `--research` it checks the narrower tooling-only list.
 ## Licence and rights
 
 The [MIT License](LICENSE) covers the resource tools, their tests and the
-documentation. It does not cover the Rust port (`rust/`) or the
+documentation, but not the screenshot. It does not cover the Rust port (`rust/`) or the
 import/unpacking scripts (`tools/import_panic.py`, `tools/unpack_panic.py`),
 whose rights status hasn't been settled. See [NOTICE](NOTICE),
 [rust/NOTICE](rust/NOTICE) and [docs/publication.md](docs/publication.md).
 
-Panic and everything in it belong to Future Crew. Extracting the files yourself
+Panic and everything in it belong to Future Crew, including the logo in the
+screenshot above. Extracting the files yourself
 doesn't give you any extra rights to use or share them.

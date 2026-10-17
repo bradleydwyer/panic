@@ -15,4 +15,6 @@ credits, not a statement of who owns the rights today.
 The original PANIC.NFO allows copying the complete, unchanged release, but not
 modifying it or using its contents in other programs. See the notice that came
 with your copy. Extracting files locally doesn't give you any further rights.
-No original demo files are included in this repository.
+No original demo files are included in this repository. The one piece of
+Future Crew artwork included is docs/panic-logo.png, a screenshot of the
+Panic logo as drawn by the Rust port. It is not covered by the MIT License.
