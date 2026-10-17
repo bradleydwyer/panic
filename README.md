@@ -18,6 +18,8 @@ materials and effects are new work, not recovered from the demo.
 
 [![Watch the modern Panic intro and scroller on YouTube](https://img.youtube.com/vi/Tiw6-bga6Qk/maxresdefault.jpg)](https://youtu.be/Tiw6-bga6Qk)
 
+[▶ Watch the modern intro and scroller on YouTube](https://youtu.be/Tiw6-bga6Qk)
+
 ## Quick start
 
 You need Rust 1.88 or newer. Desktop builds also need CMake and a C/C++
