@@ -16,7 +16,7 @@ APPROVED_FILES = {
     'tests/test_resources.py', 'tests/test_local_release.py',
     'tools/panic_resources.py', 'tools/check_publication.py',
 }
-PRIVATE_FILES = {
+RESEARCH_FILES = {
     '.cargo/config.toml', 'Cargo.toml', 'Cargo.lock', 'requirements-import.txt',
     'rust/Cargo.toml', 'rust/README.md', 'rust/NOTICE',
     'rust/src/data.rs', 'rust/src/engine.rs', 'rust/src/lib.rs',
@@ -55,9 +55,9 @@ def check_rows(records, label, allowed, *, staged=False):
                 raise ValueError(f'{label}: unexpected object type: {name}')
             oid = third
         if name not in allowed:
-            if name in PRIVATE_FILES:
-                raise ValueError(f'{label}: private research file blocks public release: {name}. '
-                                 'Use --private only for a private repository.')
+            if name in RESEARCH_FILES:
+                raise ValueError(f'{label}: research file outside standalone-tooling scope: {name}. '
+                                 'Use --research to check the complete research source scope.')
             raise ValueError(f'{label}: file outside reviewed scope: {name}')
         names.add(name)
         blobs.append((name, oid))
@@ -68,10 +68,10 @@ def check_rows(records, label, allowed, *, staged=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--private', action='store_true',
-                        help='Allow the explicit private research source list; not publication clearance')
+    parser.add_argument('--research', '--private', dest='research', action='store_true',
+                        help='Include the explicit research source list; not publication clearance')
     args = parser.parse_args()
-    allowed = APPROVED_FILES | PRIVATE_FILES if args.private else APPROVED_FILES
+    allowed = APPROVED_FILES | RESEARCH_FILES if args.research else APPROVED_FILES
     try:
         blobs = check_rows(git('ls-files', '--stage', '-z'), 'index', allowed, staged=True)
         commits = git('rev-list', '--all').decode('ascii').splitlines()
@@ -92,7 +92,7 @@ def main():
                          'divoom-minitoo' + '-research', 'gh' + 'p_']
             if any(marker in content for marker in forbidden):
                 raise ValueError(f'Local/private-path or token marker: {name}')
-        scope = 'private research' if args.private else 'public tooling'
+        scope = 'research source' if args.research else 'standalone tooling'
         print(f'Checked {len(allowed)} staged files, {len(commits)} commits, '
               f'{len(seen)} distinct text blobs against {scope} scope. '
               'This is not legal clearance.')

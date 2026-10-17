@@ -5,8 +5,8 @@ plus the STMIK sequencer and stereo sample mixer. The runtime consumes original
 assets and unpacked module data without executing DOS instructions. Its data
 must be generated locally; the original resource files are not bundled.
 
-The reconstruction is retained in this private repository for development.
-Its public redistribution and licensing remain under review; see [NOTICE](NOTICE).
+This repository publishes the reconstruction source for research and development.
+Its licensing status and original-material restrictions are described in [NOTICE](NOTICE).
 
 ## Setup
 

@@ -5,9 +5,8 @@ eight scenes, the recovered STMIK music sequencer and sample mixer. Desktop
 playback uses SDL2; the headless player needs only Rust. The player runs native
 Rust code, not a DOS emulator or captured video.
 
-This repository is **private while publication rights are reviewed**. Original
-assets, music, unpacked executables and binary test fixtures stay outside Git.
-You generate the player's data locally from your own `PANIC.EXE`.
+Original assets, music, unpacked executables and binary test fixtures stay
+outside Git. Generate the player's data locally from your own `PANIC.EXE`.
 
 ## Import and run
 
@@ -73,10 +72,9 @@ Rust original-data and reference tests are ignored by default and read local
 data/fixtures at runtime. [Rust testing instructions](rust/README.md#tests)
 explain how to run them without committing fixtures.
 
-After staging changes, run `python3 tools/check_publication.py --private`.
+After staging changes, run `python3 tools/check_publication.py --research`.
 The checker permits only the listed text sources and inspects reachable Git
-history. Its default public mode intentionally rejects the port and full
-importer. Keep GitHub visibility private before pushing this source.
+history. Its default mode checks the smaller standalone-tooling scope.
 
 ## Rights and scope
 

@@ -1,5 +1,5 @@
 Panic is a demonstration by Future Crew. This repository is an unaffiliated
-research port and resource-inspection project, currently held privately.
+research port and resource-inspection project.
 
 The included MIT license applies to the original standalone resource tools,
 synthetic tests and their accompanying prose. It does not cover rust/,
