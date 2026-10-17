@@ -1,47 +1,54 @@
-# Appended resource directory
+# Resource directory format
 
-These observations apply to the release identified in
+`PANIC.EXE` is a small DOS program with its resources appended after it,
+followed by a directory. This describes the release listed in
 [panic-release.json](../metadata/panic-release.json). Offsets are absolute file
-positions and ranges below exclude their upper endpoint. All integers are
-little-endian. No runtime behaviour is inferred from this inventory.
+positions, ranges are half-open (the end offset is excluded), and all integers
+are little-endian.
 
-| Range | Bytes | Observed role |
+| Range | Bytes | Contents |
 |---|---:|---|
-| `0x000000..0x006f91` | 28,561 | Declared DOS MZ extent |
-| `0x006f91..0x006f92` | 1 | Gap before resource payloads |
-| `0x006f92..0x19d5ba` | 1,664,552 | Contiguous resource payloads |
+| `0x000000..0x006f91` | 28,561 | DOS MZ executable (size from its header) |
+| `0x006f91..0x006f92` | 1 | Gap |
+| `0x006f92..0x19d5ba` | 1,664,552 | Resource data, back to back |
 | `0x19d5ba..0x19d5c6` | 12 | Directory header |
 | `0x19d5c6..0x19d8ae` | 744 | 31 directory records |
-| `0x19d8ae..0x19d8b2` | 4 | Absolute directory pointer |
+| `0x19d8ae..0x19d8b2` | 4 | Offset of the directory header |
 
-The footer points to `0x19d5ba`. The header consists of three unsigned 32-bit
-fields: an opaque marker (`0x00c82fc0`), the record count (`31`), and the first
-payload offset (`0x6f92`). The marker's meaning remains unresolved.
+The last four bytes of the file hold `0x19d5ba`, the offset of the directory
+header. The header is three unsigned 32-bit values: a marker (`0x00c82fc0`),
+the record count (`31`) and the offset of the first resource (`0x6f92`). We
+don't know what the marker means.
 
-Each 24-byte directory record contains:
+Each directory record is 24 bytes:
 
-| Record offset | Type | Meaning |
+| Offset | Type | Meaning |
 |---|---|---|
-| 0 | 16 bytes | ASCII name, NUL terminated and zero padded |
-| 16 | unsigned 32-bit integer | Absolute payload offset |
-| 20 | unsigned 32-bit integer | Payload length in bytes |
+| 0 | 16 bytes | ASCII name, NUL-terminated and zero-padded |
+| 16 | unsigned 32-bit | Absolute offset of the data |
+| 20 | unsigned 32-bit | Length in bytes |
 
-The payloads occur in directory order, with no intervening gaps or overlaps.
-The last payload ends exactly where the directory begins. Eight names have an
-`.EXE` suffix; the remaining 23 include a README, graphics-related data and a
-music resource. Names alone do not establish a payload's full format or purpose.
+Resources are stored in directory order with no gaps or overlaps, and the last
+one ends exactly where the directory header starts. Eight entries are `.EXE`
+programs. The other 23 are a README, graphics data and the music. The names
+are only a hint; this document doesn't describe the formats inside each file.
 
-The CLI first verifies the whole-file size and SHA-256. The parser then checks
-the MZ extent, directory extent, count, payload bounds, name termination,
-contiguity and uniqueness. It rejects path separators, case-insensitive name
-collisions and reserved device names so extraction works across common desktop
-filesystems. These filename restrictions are tool choices, not a claim about
-every historical Future Crew container.
+## How the tool validates a file
 
-Extraction copies the original slices and verifies their hashes. It does not
-decode images, render fonts, interpret tracker patterns, unpack executables,
-emulate the loader or claim complete source-level understanding.
+`panic_resources.py` first checks the file's size and SHA-256. It then checks
+the MZ size, the directory location and record count, that every entry lies
+within the file, that names are NUL-terminated, and that the entries are
+contiguous and uniquely named.
 
-Evidence basis: the known carrier's bytes and a previously preserved directory
-inventory, cross-checked against the local original when preparing this
-repository. The metadata contains names, sizes, offsets and hashes only.
+To make extraction safe on common desktop filesystems, it also rejects names
+containing path separators, names that differ only in case, and reserved
+device names such as `CON`. That's a choice made by this tool, not something
+the original format requires.
+
+Extraction copies each resource unchanged and checks its hash. It doesn't
+decode images or music, unpack the programs or run the loader; that's the job
+of `import_panic.py`.
+
+[panic-release.json](../metadata/panic-release.json) contains only names,
+sizes, offsets and hashes. These were taken from the original release and
+checked against it.

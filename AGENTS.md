@@ -1,27 +1,33 @@
-# Panic research and resource tools
+# Panic: Rust port and resource tools
 
-The user explicitly requested public visibility for this repository, including
-the Rust research port and local data importer. Source history remains separate
-from the larger research archive. Do not change visibility without instruction.
+This repository is public, including the Rust port and the data importer, at
+the owner's request. Don't change its visibility unless asked. Its history is
+separate from the private research project; don't merge that history in.
 
-The Rust port and full loader/import tools are authorised here. Publication
-does not establish copyright clearance. Keep original or
-extracted demo material, disassembly, decompiler output, binary fixtures,
-screenshots, recordings, fonts, samples and private archive locations out of Git.
-Generate player data locally from a user-supplied original. Do not treat local
-extraction or repository visibility as copyright clearance.
+Being public doesn't mean the port is cleared for copyright. Keep all of the
+following out of Git: original or extracted demo files, disassembly,
+decompiler output, binary fixtures, screenshots, recordings, fonts, samples and
+the locations of private archives. Player data is generated locally from a
+`PANIC.EXE` the user supplies.
 
-Use synthetic data in the default tests. Python original-release tests are
-opted into with PANIC_EXE. Rust original-data tests are ignored by default and
-use PANIC_DATA and PANIC_FIXTURES. Read caller-supplied files without changing them.
-Keep local output under ignored artifacts/. Never execute DOS code on the host.
+Default tests must use synthetic data. Python tests that need the original
+release are enabled with `PANIC_EXE`. Rust tests that need original data are
+`#[ignore]`d and read `PANIC_DATA` and `PANIC_FIXTURES`. Never modify files the
+user passes in. Write local output under the ignored `artifacts/` directory.
+Never execute DOS code on the host.
 
-Distinguish observed bytes, static interpretation, runtime observation and
-unresolved hypotheses. An exact directory inventory does not establish a
-complete reverse engineering or permission to reuse the payloads.
+In code comments and docs, keep clear what was read from the bytes, what is
+interpretation, what was observed at run time and what is still a guess.
+Don't claim the reverse engineering is complete.
 
-For code changes, run python3 -m unittest discover -s tests -v and
-cargo test --release --locked --no-default-features. After staging, run
-python3 tools/check_publication.py --research. Its default mode checks the smaller
-standalone-tooling scope. Review changes to either explicit file list. The
-checker tests scope and text constraints, not legal clearance.
+For code changes, run:
+
+```sh
+python3 -m unittest discover -s tests -v
+cargo test --release --locked --no-default-features
+```
+
+After staging, run `python3 tools/check_publication.py --research`. (Without
+`--research` it checks the smaller tooling-only scope.) Any change to the file
+lists in that script needs review. It only checks file scope and text; it says
+nothing about legal clearance.

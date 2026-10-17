@@ -1,54 +1,55 @@
-# Publication scope
+# What's published here
 
-This repository is public at the maintainer's explicit request. It contains two
-distinct scopes:
+This repository has two parts with different licensing:
 
-| Scope | Contents | Status |
+| Part | Contents | Licence |
 |---|---|---|
-| Resource tooling | Static directory inspector/extractor, synthetic tests, factual metadata and original format prose | The original curated snapshot; MIT applies as stated in LICENSE. |
-| Research reconstruction | Rust player, its tests and build files, full importer and bounded loader recovery | Published as research source. Licensing and original-material restrictions are recorded in rust/NOTICE. |
+| Resource tools | Resource directory inspector/extractor, synthetic tests, release metadata and documentation | MIT, see [LICENSE](../LICENSE) |
+| Rust port | Rust player and its tests and build files, `tools/import_panic.py`, `tools/unpack_panic.py` | No licence granted while rights are reviewed; see [rust/NOTICE](../rust/NOTICE) |
 
-The initial commit `3c350aa` contains the resource-tooling snapshot alone.
-The research source was subsequently added at the user's request after the
-GitHub repository was made private. The maintainer then requested public
-visibility for the combined source. No original research history was merged.
+The first commit (`3c350aa`) contains only the resource tools. The Rust port
+and importer were added afterwards. The repository was started fresh and
+contains none of the history of the original private research project.
 
-Original/extracted assets, music recordings, binary oracle fixtures, recovered
-assembly, decompiler output and packaged builds remain excluded. The importer
-generates 23 resources and nine unpacked module files locally from a supplied
-carrier. Those modules contain original code as well as tables; they remain
-ignored data and are not a licence workaround.
+## What's left out
 
-The Rust source is a research reconstruction informed by original-code analysis
-and differential tests. It is not represented as a clean-room implementation.
-The full loader helper executes the known carrier only inside bounded Unicorn
-emulation. Neither addition is cleared merely because the source contains no
-bundled media. See [rust/NOTICE](../rust/NOTICE).
+Nothing from the demo itself is in the repository: no assets, music or
+recordings, no recovered assembly or decompiler output, no binary test
+fixtures and no packaged builds. The importer recreates the 23 resources and
+nine unpacked programs on your machine from your own copy of `PANIC.EXE`. The
+unpacked programs contain original code as well as data, so they stay out of
+Git too.
 
-## Original release terms
+The Rust port was written from analysis of the original code and tested
+against it, so it isn't a clean-room implementation. The importer runs the
+original loader, but only inside Unicorn. Leaving out the demo's files doesn't
+settle whether the port itself can be freely shared, which is why it isn't
+covered by the MIT License.
 
-The original PANIC.NFO permits copying the complete, unchanged release and
-restricts modifying the demonstration or using its contents in other programs.
-The embedded README repeats those terms. Source identity is recorded in
-[the metadata](../metadata/panic-release.json); a public transcription is
-available on [Pouët](https://www.pouet.net/prod_nfo.php?font=1&which=479).
+## The original release terms
 
-No later permission, current ownership determination or legal clearance is
-asserted. Publishing source does not itself resolve copyright or usage rights
-over the reconstructed implementation or the original content it uses. No new
-permission over Future Crew material is claimed.
+Panic's `PANIC.NFO` allows copying the complete, unchanged release. It doesn't
+allow modifying the demo or using its contents in other programs, and the
+README embedded in `PANIC.EXE` says the same. You can read the NFO on
+[Pouët](https://www.pouet.net/prod_nfo.php?font=1&which=479). The release's
+hashes are in [the metadata](../metadata/panic-release.json).
+
+We haven't found any later permission, and we haven't determined who holds the
+rights today. Publishing this code doesn't grant any rights to the port or to
+Future Crew's material.
 
 ## Checks
 
-The default Python/Rust suites use synthetic data. Original-release and reference
-tests opt into local inputs; Rust oracle tests are ignored by default and load
-fixtures at runtime. The importer is checked against the recorded source and
-unpacked-module hashes. These are technical checks, not copyright conclusions.
+The default Python and Rust tests use synthetic data. Tests that need the
+original release or reference output have to be enabled explicitly and read
+those files at run time. The importer checks its input and every output file
+against known hashes.
 
-`tools/check_publication.py --research` checks the staged snapshot and every
-reachable commit against the explicit research source list, with text-only and
-private-path constraints. Its default mode checks the smaller standalone-tooling
-scope and rejects the port/importer, including their presence in history.
+`tools/check_publication.py --research` checks the staged files and every
+reachable commit against the list of allowed source files. It rejects binary
+content, large files and local paths. Without `--research` it checks the
+tooling-only list and fails if the port or importer is present anywhere in
+history.
 
-The checker does not determine ownership, detect every encoded asset or inspect
-GitHub visibility. It does not certify publication rights.
+The checker can't detect every way an asset might be encoded into text, and
+it doesn't check the GitHub repository's visibility or anyone's rights.

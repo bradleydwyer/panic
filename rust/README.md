@@ -1,23 +1,26 @@
-# Native Rust player
+# Rust player
 
-The port implements all eight effects in the order 1, 2, 6, 5, 3, 4, 7, 8,
-plus the STMIK sequencer and stereo sample mixer. The runtime consumes original
-assets and unpacked module data without executing DOS instructions. Its data
-must be generated locally; the original resource files are not bundled.
+The port implements all eight scenes, played in the original order (parts 1, 2,
+6, 5, 3, 4, 7, 8), plus the STMIK sequencer and stereo sample mixer. It reads
+the original assets and the unpacked programs' data tables but never executes
+DOS code. You generate that data yourself from your own `PANIC.EXE`; none of it
+is included here.
 
-This repository publishes the reconstruction source for research and development.
-Its licensing status and original-material restrictions are described in [NOTICE](NOTICE).
+This directory is not covered by the repository's MIT License. See
+[NOTICE](NOTICE).
 
 ## Setup
 
-Use Rust 1.88 or newer. Desktop playback builds SDL2 0.38.0 from its pinned
-bundled source and requires CMake plus a C/C++ compiler. On Linux, also install
-the platform development libraries SDL needs for your window/audio system.
-The pure Rust headless build does not require SDL or CMake.
+You need Rust 1.88 or newer. The desktop build compiles SDL2 0.38.0 from
+bundled source, so it also needs CMake and a C/C++ compiler. On Linux, install
+the development packages SDL needs for your display and audio system. The
+headless build is pure Rust and needs neither SDL nor CMake.
 
-The full data importer needs Python, Unicorn 2.1.4, Capstone 5.0.7 and Deark.
-The tested Deark revision is `8997059c4f32af79978fb6c83be7c1c26c259afa`
-(1.7.3-1). A local source build can be prepared with Git, make and a C compiler:
+The importer needs Python, Unicorn 2.1.4, Capstone 5.0.7 and Deark. It was
+tested with Deark 1.7.3-1, revision
+`8997059c4f32af79978fb6c83be7c1c26c259afa`. To build that revision and import
+your data, run this from the repository root (you'll need Git, make and a C
+compiler):
 
 ```sh
 git clone https://github.com/jsummers/deark.git artifacts/tools/deark
@@ -29,16 +32,15 @@ python3 -m venv .venv
   --deark artifacts/tools/deark/deark --out artifacts/local-data
 ```
 
-Run these commands from the repository root. On Windows, use the virtual
-environment's `Scripts/python.exe` and a compatible Deark build instead.
-The build tools have their own licenses; their source and binaries remain local.
+On Windows, use `.venv/Scripts/python.exe` and a Windows build of Deark.
+Everything under `artifacts/` is ignored by Git.
 
-The original carrier must have SHA-256
+Your `PANIC.EXE` must have SHA-256
 `a7ceeae290a7132880cd6ba616c2b0bb4001b2f7c83694f04052314fa26df6e7`.
-The importer verifies all extracted and unpacked output identities before
-completion. It preserves the original embedded notice in `files/README.TXT`.
-The output contains original code as well as data and must remain outside Git.
-Importing does not grant usage or redistribution rights.
+The importer checks the hash of every file it produces before finishing, and
+copies the demo's own notice to `files/README.TXT`. The output includes
+original program code, so keep it out of Git. Importing it doesn't give you any
+extra rights to use or share it.
 
 ## Run
 
@@ -48,48 +50,51 @@ cargo run --release --locked --no-default-features -- \
   --headless --data artifacts/local-data
 ```
 
-Escape quits, Space pauses and F toggles fullscreen. `--seek 180` starts after
-a deterministic fast-forward to three minutes. `--mute` silences the speakers
-but keeps music timing. `--fallback` selects the no-music schedules.
-`--seconds 10` limits playback; `--out artifacts/export` saves locally generated
-audio/images and diagnostics. Those outputs remain excluded from Git.
+Escape quits, Space pauses and F toggles fullscreen. Useful options:
 
-`PANIC_DATA` can supply the data directory instead of `--data`. The runtime
-also recognises `data/` beside the executable and the original research layout.
-The lightweight `panic_resources.py extract` output is insufficient; use the
-full importer above.
+- `--seek 180` fast-forwards to the three-minute mark before playing.
+- `--mute` silences the audio but keeps the music driving scene timing.
+- `--fallback` uses the original no-music scene schedules.
+- `--seconds 10` stops after ten seconds.
+- `--out artifacts/export` saves output there. In headless mode that's a WAV,
+  a snapshot every ten seconds and a timeline CSV; the desktop player saves a
+  screenshot of each scene and a run summary.
+- `--fullscreen` starts in fullscreen.
+
+Instead of `--data` you can set `PANIC_DATA`. With neither, the player looks
+for a `data/` directory in the current directory or next to the executable.
+The output of `panic_resources.py extract` isn't enough to run the player; use
+the full importer.
 
 ## Tests
 
-The normal suite compiles with no original files or binary fixtures:
+The normal suite needs no original files:
 
 ```sh
 cargo test --release --locked --no-default-features
 ```
 
-Tests comparing original data and machine-code oracle results are explicitly
-ignored by default. They read files at runtime instead of embedding fixtures.
-To run them, supply imported player data and your separately preserved reference
-fixtures. `PANIC_FIXTURES` points to a directory containing `tests/fixtures/`
-and `testdata/567/`, matching the research project's `rust/` layout:
+Tests that compare against original data or recorded reference output are
+marked `#[ignore]`. They read their inputs at run time rather than embedding
+them. To run them, point `PANIC_DATA` at your imported data and
+`PANIC_FIXTURES` at a directory containing `tests/fixtures/` and
+`testdata/567/` reference files:
 
 ```sh
 PANIC_DATA=/path/to/imported-data PANIC_FIXTURES=/path/to/reference-rust \
   cargo test --release --locked --no-default-features -- --ignored
 ```
 
-The importer generates player inputs, not oracle fixtures. The full historical
-oracle suite requires those separately preserved local fixtures. No binary
-fixture, including an audio recording, belongs in this repository.
+The importer doesn't create those reference files, and they aren't distributed
+here. Don't commit any binary fixtures, including audio.
 
-## Behaviour and limits
+## Timing and platform notes
 
-The native timing model uses a deterministic 70 Hz scene timer, 16 kHz stereo
-audio and a fixed 512-byte refill contract. This preserves the recovered
-arithmetic and sequencing choices but does not emulate physical VGA/PIT timing
-or promise the same frame selection as every original DOS machine.
+The player runs on a fixed 70 Hz scene timer with 16 kHz stereo audio mixed in
+512-byte blocks. Scene arithmetic and sequencing follow the original, but real
+VGA and PIT timing isn't emulated, so frame timing won't match every DOS
+machine exactly. A full headless run takes 17,442 timer steps (249.171429
+seconds).
 
-The research baseline's full headless run takes 17,442 simulated timer steps,
-or 249.171429 seconds. The reconstruction has been exercised on Apple Silicon;
-other desktop platforms still require runtime validation. A successful build
-alone does not establish their display/audio behaviour.
+It's been tested on Apple Silicon Macs. It should build elsewhere, but display
+and audio on other platforms haven't been checked yet.

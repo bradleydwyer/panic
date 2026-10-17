@@ -1,18 +1,20 @@
 # Panic in Rust
 
-A native Rust research reconstruction of Future Crew's **Panic**, with all
-eight scenes, the recovered STMIK music sequencer and sample mixer. Desktop
-playback uses SDL2; the headless player needs only Rust. The player runs native
-Rust code, not a DOS emulator or captured video.
+A Rust port of Future Crew's 1992 demo **Panic**. All eight scenes are
+implemented, along with the STMIK music player (sequencer and sample mixer).
+It's native code, not a DOS emulator or a video capture. Desktop playback uses
+SDL2; the headless player needs only Rust.
 
-Original assets, music, unpacked executables and binary test fixtures stay
-outside Git. Generate the player's data locally from your own `PANIC.EXE`.
+The repository contains no original demo files. You generate the player's
+data from your own copy of `PANIC.EXE`.
 
-## Import and run
+## Quick start
 
-The player requires Rust 1.88 or newer. Desktop builds also need CMake and a
-C/C++ compiler. Data import needs Python with the pinned packages below and
-a Deark executable. See [the full setup instructions](rust/README.md).
+You need Rust 1.88 or newer. Desktop builds also need CMake and a C/C++
+compiler. The data importer needs Python, the packages in
+`requirements-import.txt` and a [Deark](https://github.com/jsummers/deark)
+executable. [rust/README.md](rust/README.md) has the full setup, including how
+to build the tested Deark revision.
 
 ```sh
 python3 -m venv .venv
@@ -22,25 +24,28 @@ python3 -m venv .venv
 cargo run --release --locked -- --data artifacts/local-data
 ```
 
-The importer accepts the known 1,693,874-byte release and verifies its SHA-256.
-It extracts 23 resources, decodes the eight embedded programs with Deark, and
-recovers the resident loader in bounded Unicorn emulation. All nine resulting
-module hashes must match the recorded identities. DOS code never runs directly
-on the host. The importer fetches nothing and refuses existing destinations.
+The importer only accepts the 1,693,874-byte release (it checks the SHA-256).
+It extracts the 23 data resources, unpacks the eight embedded programs with
+Deark, and recovers the resident loader by running it under Unicorn. DOS code
+is never run directly on your machine. Every output file is checked against a
+known hash. The importer doesn't download anything and won't overwrite an
+existing directory.
 
-For a complete run without a window or audio device:
+To play without a window or audio device:
 
 ```sh
 cargo run --release --locked --no-default-features -- \
   --headless --data artifacts/local-data
 ```
 
-Escape quits, Space pauses and F toggles fullscreen. `--seek 180` fast-forwards
-to three minutes. `--mute` keeps music timing while silencing output.
+Controls: Escape quits, Space pauses, F toggles fullscreen. `--seek 180` skips
+to the three-minute mark and `--mute` turns the sound off. Run with `--help`
+for the other options.
 
-## Resource inspection
+## Inspecting the resource file
 
-The standalone directory tool uses only Python's standard library:
+`tools/panic_resources.py` reads the resource directory appended to
+`PANIC.EXE`. It needs only the Python standard library:
 
 ```sh
 python3 tools/panic_resources.py inspect /path/to/PANIC.EXE
@@ -48,43 +53,41 @@ python3 tools/panic_resources.py extract /path/to/PANIC.EXE \
   --out artifacts/raw-resources
 ```
 
-It inventories all 31 directory entries and extracts the 23 non-program
-resources by default. `--include-programs` also copies the packed programs
-unchanged. This static extraction does not recover the tables the Rust player
-needs; use `import_panic.py` for playable data.
+`inspect` lists all 31 entries. `extract` copies out the 23 non-program
+resources, or the packed programs as well with `--include-programs`. This isn't
+enough to run the player, which also needs tables from the unpacked programs.
+Use `import_panic.py` for that.
 
-[Release metadata](metadata/panic-release.json) records hashes and offsets.
-The [container notes](docs/container-format.md) describe the observed layout.
-The original release is catalogued by
+[metadata/panic-release.json](metadata/panic-release.json) lists every entry's
+offset, size and hash, and [docs/container-format.md](docs/container-format.md)
+describes the layout. The original release is on
 [scene.org](https://files.scene.org/view/parties/1992/theparty92/demo/panic.zip).
 
-## Tests and source checks
+## Tests
 
-Default tests use synthetic data and need no original release:
+The default tests use synthetic data, so you don't need the original release:
 
 ```sh
 python3 -m unittest discover -s tests -v
 cargo test --release --locked --no-default-features
 ```
 
-Python integration checks are enabled with `PANIC_EXE=/path/to/PANIC.EXE`.
-Rust original-data and reference tests are ignored by default and read local
-data/fixtures at runtime. [Rust testing instructions](rust/README.md#tests)
-explain how to run them without committing fixtures.
+Set `PANIC_EXE=/path/to/PANIC.EXE` to include the Python tests that use the
+real file. The Rust tests that need original data are ignored by default; see
+[rust/README.md](rust/README.md#tests) for how to run them.
 
-After staging changes, run `python3 tools/check_publication.py --research`.
-The checker permits only the listed text sources and inspects reachable Git
-history. Its default mode checks the smaller standalone-tooling scope.
+Before committing, stage your changes and run
+`python3 tools/check_publication.py --research`. It checks that the index and
+every reachable commit contain only the listed text files, with no binary data
+or local paths. Without `--research` it checks the narrower tooling-only list.
 
-## Rights and scope
+## Licence and rights
 
-The [MIT license](LICENSE) covers the standalone resource tools, their synthetic
-tests and prose. The Rust reconstruction and full import/recovery helpers are
-outside that license while rights review remains unresolved; see
-[NOTICE](NOTICE), [rust/NOTICE](rust/NOTICE) and the
-[publication scope](docs/publication.md).
+The [MIT License](LICENSE) covers the resource tools, their tests and the
+documentation. It does not cover the Rust port (`rust/`) or the
+import/unpacking scripts (`tools/import_panic.py`, `tools/unpack_panic.py`),
+whose rights status hasn't been settled. See [NOTICE](NOTICE),
+[rust/NOTICE](rust/NOTICE) and [docs/publication.md](docs/publication.md).
 
-Future Crew's material retains its original rights. Local extraction and private
-repository visibility do not grant permission to reuse or redistribute it.
-This is a working research port, not a claim of complete reverse engineering
-or public-release clearance.
+Panic and everything in it belong to Future Crew. Extracting the files yourself
+doesn't give you any extra rights to use or share them.
